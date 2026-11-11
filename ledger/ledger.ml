@@ -1,8 +1,15 @@
 (* ledger.ml — append-only, hash-chained decision log.
    Integrity is owned by THIS program, not by any LLM prompt.
    - append : add an entry; physically O_APPEND, never truncates/rewrites.
+     A malformed entry is refused (reason on stderr, exit 2, nothing written): it needs
+     at least one --key value, no empty value, type open/check/adjust/close need strategy,
+     fill/review need strategy or ref, open/decision need action. Type defaults to decision.
    - verify : recompute the MD5 hash-chain; detects any edit, reorder, or deletion.
    - list / show / pending : read-only helpers.
+   - thread / strategies : read-only views of entries grouped by their "strategy" field;
+     a strategy is CLOSED once any of its entries has type "close". strategies adds
+     PENDING when the strategy's newest open, adjust or close entry has a status starting
+     with "pending" and no fill entry follows it.
    Each line is: SEQ|HASH|PAYLOAD   where HASH = MD5(prev_hash ^ RS ^ payload).
    stdlib + unix only — compiles to a single dependency-free native binary. *)
 
@@ -105,6 +112,24 @@ let append payload =
   output_string oc line; close_out oc;
   Printf.printf "appended seq %d  (hash %s)\n" seq hash
 
+let reject msg = prerr_endline ("ledger: refused, " ^ msg ^ "; nothing written"); exit 2
+
+(* the reason an entry is malformed, or None; [fields] already carries the type *)
+let invalid user_fields fields =
+  let has k = List.mem_assoc k fields in
+  let ty = List.assoc "type" fields in
+  match List.find_opt (fun (_, v) -> v = "") fields with
+  | _ when user_fields = [] -> Some "at least one --key value pair is required"
+  | Some (k, _) -> Some ("--" ^ k ^ " has an empty value")
+  | None ->
+      if List.mem ty ["open"; "check"; "adjust"; "close"] && not (has "strategy") then
+        Some ("type " ^ ty ^ " requires --strategy")
+      else if List.mem ty ["fill"; "review"] && not (has "strategy" || has "ref") then
+        Some ("type " ^ ty ^ " requires --strategy or --ref")
+      else if List.mem ty ["open"; "decision"] && not (has "action") then
+        Some ("type " ^ ty ^ " requires --action")
+      else None
+
 let verify () =
   let rec loop prev expect = function
     | [] -> Printf.printf "OK \xe2\x80\x94 %d entries, chain intact\n" (expect - 1); exit 0
@@ -123,13 +148,15 @@ let verify () =
             loop hash (expect + 1) tl in
   loop genesis 1 (read_lines ledger_path)
 
+let print_entry seq p =
+  let g k = match field k p with Some v -> v | None -> "-" in
+  Printf.printf "%-4s %-8s %-7s %-10s %s\n"
+    seq (g "type") (g "ticker") (g "action") (g "ts")
+
 let list_entries () =
   List.iter (fun line ->
     match parse_line line with
-    | Some (seq, _, p) ->
-        let g k = match field k p with Some v -> v | None -> "-" in
-        Printf.printf "%-4s %-8s %-7s %-10s %s\n"
-          seq (g "type") (g "ticker") (g "action") (g "ts")
+    | Some (seq, _, p) -> print_entry seq p
     | None -> ()) (read_lines ledger_path)
 
 let show want =
@@ -155,6 +182,43 @@ let pending () =
           seq (g "ticker") (g "action") (g "horizon_years") (g "expectation")
     | _ -> ()) entries
 
+(* every entry of one strategy, in ledger order *)
+let thread id =
+  List.iter (fun line ->
+    match parse_line line with
+    | Some (seq, _, p) when field "strategy" p = Some id -> print_entry seq p
+    | _ -> ()) (read_lines ledger_path)
+
+(* one line per strategy, in order of first appearance *)
+let strategies () =
+  let tally = Hashtbl.create 16 and order = ref [] in
+  List.iter (fun line ->
+    match parse_line line with
+    | Some (_, _, p) -> (
+        match field "strategy" p with
+        | None -> ()
+        | Some id ->
+            let ty = match field "type" p with Some t -> t | None -> "-" in
+            let (n, _, closed, pending) = match Hashtbl.find_opt tally id with
+              | Some x -> x
+              | None -> order := id :: !order; (0, ty, false, false) in
+            (* pending: the newest open/adjust/close has a status starting "pending" and no
+               fill came after it *)
+            let pending =
+              if List.mem ty ["open"; "adjust"; "close"] then
+                (match field "status" p with
+                 | Some s -> String.length s >= 7 && String.sub s 0 7 = "pending"
+                 | None -> false)
+              else if ty = "fill" then false
+              else pending in
+            Hashtbl.replace tally id (n + 1, ty, closed || ty = "close", pending))
+    | None -> ()) (read_lines ledger_path);
+  List.iter (fun id ->
+    let (n, last, closed, pending) = Hashtbl.find tally id in
+    Printf.printf "%-20s %3d entries  last %-8s %s%s\n"
+      id n last (if closed then "CLOSED" else "OPEN") (if pending then " PENDING" else ""))
+    (List.rev !order)
+
 let () =
   match Array.to_list Sys.argv with
   | _ :: "append" :: rest ->
@@ -162,16 +226,23 @@ let () =
         | [] -> List.rev acc
         | k :: v :: tl when String.length k > 2 && String.sub k 0 2 = "--" ->
             pairs ((String.sub k 2 (String.length k - 2), v) :: acc) tl
-        | k :: _ -> failwith ("ledger: malformed argument near " ^ k) in
-      let fields = pairs [] rest in
-      let fields = if List.mem_assoc "type" fields then fields
-                   else ("type", "decision") :: fields in
-      append (json_obj (fields @ [("ts", iso_now ())]))
+        | k :: _ -> reject ("malformed argument near " ^ k) in
+      let user_fields = pairs [] rest in
+      let fields = if List.mem_assoc "type" user_fields then user_fields
+                   else ("type", "decision") :: user_fields in
+      (match invalid user_fields fields with
+       | Some msg -> reject msg
+       | None -> append (json_obj (fields @ [("ts", iso_now ())])))
   | _ :: "verify" :: _ -> verify ()
   | _ :: "list" :: _ -> list_entries ()
   | _ :: "show" :: s :: _ -> show s
   | _ :: "pending" :: _ -> pending ()
+  | _ :: "thread" :: id :: _ -> thread id
+  | _ :: "strategies" :: _ -> strategies ()
   | _ ->
       prerr_endline
-        "usage: ledger {append --type decision|review --key val ... | verify | list | show SEQ | pending}";
+        "usage: ledger {append --type decision|review --key val ... | verify | list | show SEQ | pending\n\
+         \ | thread STRATEGY | strategies}\n\
+         append needs one non-empty --key value at least; open/check/adjust/close need --strategy,\n\
+         fill/review need --strategy or --ref, open/decision (the default type) need --action.";
       exit 2
