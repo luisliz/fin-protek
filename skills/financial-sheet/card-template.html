@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<!-- Optional web fonts, off by default: the card holds private positions and makes no network request.
+     Every font stack below falls back to system fonts. Uncomment only when the user asks for the web fonts.
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@600&display=swap">
+-->
+
+<style>
+:root {
+  --bg: #f3f5f7; --surface: #fcfcfb; --ink: #14181c; --ink-2: #48505a; --muted: #717a85; --rule: #d9dee4;
+  --gain: #2a78d6; --cost: #eb6834;
+  --display: "IBM Plex Sans Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #111314; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #918f86; --rule: #34352f; --gain: #3987e5; --cost: #d95926; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 var(--body); padding: 24px 16px; }
+.card { max-width: 560px; margin: 0 auto; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 22px 22px 18px; display: flex; flex-direction: column; gap: 16px; }
+h1 { font: 600 24px/1.15 var(--display); margin: 0; }
+.sub { color: var(--ink-2); margin: 4px 0 0; }
+.trade { font-family: var(--mono); font-size: 13.5px; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); padding: 10px 0; display: flex; flex-direction: column; gap: 2px; }
+.figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.figs .k { font-size: 11.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--ink-2); }
+.figs .v { font: 500 21px/1.2 var(--mono); font-variant-numeric: tabular-nums; margin-top: 2px; }
+.figs .d { font-size: 12.5px; color: var(--ink-2); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { padding: 6px 8px; border-bottom: 1px solid var(--rule); text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+th { font: 500 11.5px var(--body); color: var(--ink-2); }
+th:first-child, td:first-child { text-align: left; padding-left: 0; }
+td:last-child, th:last-child { padding-right: 0; font-weight: 600; }
+.sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: 0; }
+.plan { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; }
+.foot { font-size: 12px; color: var(--muted); margin: 0; }
+@media (max-width: 480px) { .figs { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div>
+    <h1>{{TITLE}}</h1>
+    <!-- Lead with the likely outcome: the most probable case, one sentence with its base rate and source
+         (by topic, SKILL.md section 2), even when it is "the premium is lost". Never the best case,
+         never a forecast; no base rate on file → say "no base rate on file". -->
+    <p class="sub">{{LIKELY_OUTCOME}}</p>
+  </div>
+
+  <!-- One line per leg or order, exactly as typed into a broker, each ending with its state:
+       filled, placed, not placed, waiting (window opens YYYY-MM-DD), or pending your confirmation of X. -->
+  <div class="trade">
+{{TRADE_LINES}}
+  </div>
+
+  <!-- At most three headline figures, mapped per topic in SKILL.md section 2. Delete a whole figure
+       <div> to show fewer; never add a fourth. No figure is the best case. An income goal leads with
+       ENOUGH (need, income, shortfall or surplus per year), then cover, then concentration. A goal
+       whose tolerance is unconfirmed, not asked or declined never reads "no breach". -->
+  <div class="figs">
+    <div><div class="k">{{FIG1_LABEL}}</div><div class="v">{{FIG1_VALUE}}</div><div class="d">{{FIG1_NOTE}}</div></div>
+    <div><div class="k">{{FIG2_LABEL}}</div><div class="v">{{FIG2_VALUE}}</div><div class="d">{{FIG2_NOTE}}</div></div>
+    <div><div class="k">{{FIG3_LABEL}}</div><div class="v">{{FIG3_VALUE}}</div><div class="d">{{FIG3_NOTE}}</div></div>
+  </div>
+
+  <!-- The only table: at most 8 rows and 4 columns. Cells stay short so it fits a 360px phone: at most
+       7 characters in a 4-column table, 10 in a 3-column one. A "no change" row on hedge, option-bet
+       and trade tables only; the likely case before any better case; combined result in the last
+       column; empty cells of a total row read "-"; a rounding gap stated in TABLE_NOTE. Swatches
+       only on hedge, option-bet and result columns: <span class="sw" style="background:var(--cost)"></span>
+       for a loss or var(--gain) for a gain. -->
+  <table>
+    <thead><tr>{{TABLE_HEAD}}</tr></thead>
+    <tbody>
+{{TABLE_ROWS}}
+    </tbody>
+  </table>
+  <p class="foot" style="margin-top:-8px">{{TABLE_NOTE}}</p>
+
+  <ul class="plan">
+    <li><b>Decision:</b> {{ONE_SENTENCE_PLAN}}</li>
+    <li><b>Exit plan:</b> {{EXIT_PLAN}}</li>
+    <li><b>Dates:</b> {{DATES}}</li>
+  </ul>
+
+  <p class="foot">{{FOOTER}}</p>
+</div>
+</body>
+</html>
