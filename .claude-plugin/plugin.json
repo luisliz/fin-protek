@@ -1,0 +1,9 @@
+{
+  "name": "fin-protek",
+  "version": "0.1.0",
+  "author": { "name": "luisliz", "url": "https://github.com/luisliz" },
+  "repository": "https://github.com/luisliz/fin-protek",
+  "license": "MIT",
+  "description": "Document-grounded portfolio analysis for a self-directed investor: filing extraction, independent red team, exposure map, conviction test, hedge design, and luck-versus-skill review, recorded in an append-only decision ledger.",
+  "keywords": ["finance", "investing", "sec-filings", "risk", "portfolio"]
+}

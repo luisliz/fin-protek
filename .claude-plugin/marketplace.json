@@ -1,0 +1,14 @@
+{
+  "name": "fin-protek",
+  "description": "Document-grounded portfolio analysis skills for Claude Code, with an independent red team and an append-only decision ledger.",
+  "owner": {
+    "name": "luisliz"
+  },
+  "plugins": [
+    {
+      "name": "fin-protek",
+      "source": "./",
+      "description": "Document-grounded portfolio analysis with an independent red team and an append-only decision ledger."
+    }
+  ]
+}
